@@ -34,6 +34,7 @@ import render_html                                       # noqa: E402
 import spec as spec_mod                                  # noqa: E402
 
 PRICING = {"lite": (0.8, 2.7), "pro": (6.0, 30.0)}       # ¥ per 1M tokens (in, out)
+ICON_CACHE = HERE / ".icon-cache"                        # survives across requests (gitignored)
 
 
 def _fetch_one(slug, icondir):
@@ -65,8 +66,51 @@ def _fetch_one(slug, icondir):
     return None
 
 
+def _cache_lookup(slug, icondir):
+    """Copy cached icon (+dark variant) for slug; returns meta or None."""
+    ICON_CACHE.mkdir(exist_ok=True)
+    files = [f for f in ICON_CACHE.glob(f"{slug}.*")
+             if f.suffix.lower() in EXTS and f.stem == slug]
+    if not files:
+        return None
+    shutil.copy(files[0], icondir / files[0].name)
+    dark = ICON_CACHE / f"{slug}_dark{files[0].suffix}"
+    dark_name = None
+    if dark.exists():
+        shutil.copy(dark, icondir / dark.name)
+        dark_name = f"{slug}_dark"
+    src = "svgl"
+    mpath = ICON_CACHE / "manifest.json"
+    if mpath.exists():
+        try:
+            src = json.loads(mpath.read_text()).get(slug, {}).get("source", "svgl")
+        except Exception:                                              # noqa: BLE001
+            pass
+    return {"plate": False, "dark": dark_name, "credit": src}
+
+
+def _cache_store(slug, icondir, meta):
+    """Persist a freshly fetched icon into the cache."""
+    ICON_CACHE.mkdir(exist_ok=True)
+    for f in icondir.glob(f"{slug}.*"):
+        if f.suffix.lower() in EXTS and f.stem == slug:
+            shutil.copy(f, ICON_CACHE / f.name)
+    if meta.get("dark"):
+        for f in icondir.glob(f"{slug}_dark.*"):
+            shutil.copy(f, ICON_CACHE / f.name)
+    mpath = ICON_CACHE / "manifest.json"
+    m = {}
+    try:
+        m = json.loads(mpath.read_text())
+    except Exception:                                                  # noqa: BLE001
+        m = {}
+    m[slug] = {"source": meta.get("credit", "svgl")}
+    mpath.write_text(json.dumps(m, indent=1))
+
+
 def _assemble_icons(slugs, icondir):
-    """volc pack + generic glyphs locally, the rest through the svgl chain.
+    """volc pack + generic glyphs locally, the rest through the svgl chain
+    (with a persistent cache so repeated requests skip the network).
     Returns icon_meta {slug: {plate,dark,credit}} for slugs that resolved."""
     meta = {}
     for s in sorted(slugs):
@@ -84,9 +128,15 @@ def _assemble_icons(slugs, icondir):
             shutil.copy(local, icondir / f"{s}{local.suffix}")
             meta[s] = {"plate": True, "dark": None, "credit": "volc pack"}
             continue
+        cached = _cache_lookup(s, icondir)
+        if cached:
+            meta[s] = cached
+            continue
         got = _fetch_one(s, icondir)
         if got:
-            meta[s] = {"plate": False, "dark": got["dark"], "credit": got["source"]}
+            entry = {"plate": False, "dark": got["dark"], "credit": got["source"]}
+            meta[s] = entry
+            _cache_store(s, icondir, entry)
     return meta
 
 

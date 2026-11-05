@@ -4,9 +4,14 @@
 Used by probe_ark.py and server.py. Reads ARK_API_KEY / ARK_MODEL from the
 environment. Talks only to Ark's official hosts (literal constants, selected
 by ARK_REGION from a fixed table) over TLS via http.client — nothing
-user-supplied ever reaches the connection target.
+user-supplied ever reaches the connection target. Uses the subscription-plan
+endpoint /api/plan/v3 (not pay-as-you-go /api/v3).
 """
-import http.client, json, os, time
+import http.client
+import ipaddress
+import json
+import os
+import time
 
 
 class ArkError(RuntimeError):
@@ -16,22 +21,43 @@ class ArkError(RuntimeError):
 # Fixed official Ark hosts — safe by construction; no env/user input flows here.
 _ARK_HOSTS = {"cn-beijing": "ark.cn-beijing.volces.com",
               "ap-southeast": "ark.ap-southeast.volces.com"}
-_ARK_PATH = "/api/v3/chat/completions"
+# 订阅套餐端点（用户账号为 plan 套餐；按量 /api/v3 会报账户欠费）
+_ARK_PATH = "/api/plan/v3/chat/completions"
 
 
-def chat(messages, model=None, temperature=0.2, max_tokens=2400, retries=1, timeout=90):
-    """One chat completion. Returns (content_str, usage_dict, latency_s)."""
+def _assert_public_host(host):
+    """Explicit guard: https-only transport elsewhere; reject loopback/private/
+    reserved addresses before connecting (hosts here are constants, this makes
+    the invariant enforced rather than implied)."""
+    h = (host or "").strip().rstrip(".").lower()
+    if not h or h == "localhost" or h.endswith((".local", ".internal", ".lan")):
+        raise ArkError(f"blocked host: {host!r}")
+    try:
+        ip = ipaddress.ip_address(h)
+        if not ip.is_global:
+            raise ArkError(f"blocked non-global address: {h}")
+    except ValueError:
+        pass                                            # a domain name: fine
+    return h
+
+
+def chat(messages, model=None, temperature=0.2, max_tokens=2400, retries=1, timeout=90,
+         thinking=False):
+    """One chat completion. Returns (content_str, usage_dict, latency_s).
+    thinking=False disables the Seed 2.1 reasoning pass — schema extraction
+    does not need it, and it cut 40-55s latencies down to seconds."""
     key = os.environ.get("ARK_API_KEY", "")
     region = os.environ.get("ARK_REGION", "cn-beijing")
     model = model or os.environ.get("ARK_MODEL", "doubao-seed-2-1-lite-260915")
     if not key:
         raise ArkError("ARK_API_KEY not set")
-    host = _ARK_HOSTS.get(region, _ARK_HOSTS["cn-beijing"])
+    host = _assert_public_host(_ARK_HOSTS.get(region, _ARK_HOSTS["cn-beijing"]))
     body = json.dumps({
         "model": model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
+        "thinking": {"type": "enabled" if thinking else "disabled"},
     }).encode("utf-8")
     last = None
     for attempt in range(retries + 1):

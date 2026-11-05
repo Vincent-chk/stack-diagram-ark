@@ -4,3 +4,8 @@ __pycache__/
 .ruff_cache/
 .DS_Store
 .mimosa/
+
+# secrets
+ark/.env
+ark/.icon-cache/
+ark/.env
