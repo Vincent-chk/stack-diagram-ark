@@ -15,7 +15,7 @@ import pipeline                                            # noqa: E402
 
 OUT = HERE.parent.parent / "test-out" / "bench"
 OUT.mkdir(parents=True, exist_ok=True)
-DOCS = HERE.parent.parent.parent / "docs"
+DOCS = HERE.parent.parent / "docs"
 DOCS.mkdir(exist_ok=True)
 
 SENTENCES = [

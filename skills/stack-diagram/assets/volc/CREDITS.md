@@ -9,7 +9,7 @@ use）：仅用于在架构图中指代该产品本身；不重着色、不裁�
 | volcengine | 火山引擎（方舟/HiAgent/AgentKit 等子产品共用厂商标） | volcengine.png 192×192 | https://portal.volccdn.com/obj/volcfe/misc/favicon.png （官网 favicon） |
 | doubao | 豆包（含 Seed 系模型） | doubao.png 192×192 | https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/favicon/new-doubao/192x192.png （官网 favicon） |
 | coze | 扣子 Coze | coze.jpg 512×512 | App Store「扣子 - 开启全新 Agent 体验」官方应用图标 |
-| trae | TRAE | trae.png 48×48 | https://lf16-web-neutral.traecdn.ai/obj/trae-ai-static/trae_website/favicon.png （官网 favicon） |
+| trae | TRAE | trae.png 48×48 | https://lf16-web-neutral.traecdn.ai/obj/trae-ai-static/trae_website/favicon.png （官网 favicon；**官方最大尺寸即 48×48**——2026-11-05 实测海外站/中国站 CDN、App Store 均无更高清版本，34px 磁贴显示 1.4 倍余量够用，仅 2x retina 屏略软） |
 | feishu | 飞书 | feishu.png 512×512 | https://www.feishu.cn/ og:image（飞书官方 CDN，黑底彩标） |
 | wechat | 微信 / 公众号 | wechat.jpg 512×512 | App Store「微信」官方应用图标 |
 | douyin | 抖音 | douyin.jpg 512×512 | App Store「抖音」官方应用图标 |

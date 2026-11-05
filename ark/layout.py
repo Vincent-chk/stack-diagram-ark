@@ -8,7 +8,11 @@ the constants from the skill's references/geometry.md:
   lines share the gap (30px per extra line); group boxes padded 24/60/150 and
   clipped above the next row's tiles.
 Edges spanning several rows route through an x-corridor verified free of node
-boxes in every intermediate row. Labels sit below their line segment.
+boxes in every intermediate row. Horizontal segments keep clear of group-label
+corners (geometry.md: "keep edges out of that corner"). Foreign nodes caught
+inside a group box are re-packed to whichever side has room (polish: no more
+always-right exile), and same-row members of a group are made contiguous so
+boxes stay narrow in the first place.
 """
 import re
 
@@ -29,6 +33,18 @@ def _txt_w(s):
 
 def _box_w(name):
     return min(176, max(BOX_W, int(_txt_w(name) + 34)))
+
+
+def _label_rects(gboxes):
+    """Top-left corner label zone of each group box (geometry.md keeps edges
+    out of it). Width estimate: icon 14 + gap + 12px display text, padded —
+    underestimating here would let an entry edge drop through the label."""
+    rects = []
+    for gb in gboxes:
+        w = (20 if gb.get("icon") else 0) + _txt_w(gb["name"]) * 1.1 + 16
+        rects.append({"x0": gb["x"] + 12, "x1": gb["x"] + 12 + w,
+                      "y0": gb["y"] + 12, "y1": gb["y"] + 32, "name": gb["name"]})
+    return rects
 
 
 def _layers(nodes, edges):
@@ -110,6 +126,48 @@ def _order(rows, layer, edges, groups):
     return order
 
 
+def _make_contiguous(order, rows, groups, up_entries):
+    """Post-pass: same-row members of a group become one block, so group boxes
+    stay narrow and foreign nodes between members (the classic push-out
+    trigger) disappear. Foreign nodes caught between move to the nearer end.
+    Inside a block, members WITHOUT an entering edge from above go leftmost:
+    the group label lives in the top-left corner, and a member with an entry
+    edge under it would drop a vertical segment straight through the label."""
+    gid = {}
+    for gi, g in enumerate(groups):
+        for m in g["members"]:
+            gid[m] = gi
+    for r in rows:
+        row = order[r]
+        by_group = {}
+        for k, i in enumerate(row):
+            if i in gid:
+                by_group.setdefault(gid[i], []).append(k)
+        for gi, ks in by_group.items():
+            if len(ks) < 2:
+                continue
+            lo, hi = min(ks), max(ks)
+            inside = row[lo:hi + 1]
+            foreigners = [i for i in inside if gid.get(i) != gi]
+            if not foreigners:
+                # still reorder the block itself (label-safe leftmost)
+                block = sorted((i for i in inside if gid.get(i) == gi),
+                               key=lambda i: 1 if i in up_entries else 0)
+                if block != inside:
+                    order[r] = row[:lo] + block + row[hi + 1:]
+                    row = order[r]
+                continue
+            block = sorted((i for i in inside if gid.get(i) == gi),
+                           key=lambda i: 1 if i in up_entries else 0)
+            rest_head, rest_tail = row[:lo], row[hi + 1:]
+            left_load = sum(1 for _ in rest_head)
+            right_load = sum(1 for _ in rest_tail)
+            newrow = (rest_head + block + foreigners + rest_tail if left_load <= right_load
+                      else rest_head + foreigners + block + rest_tail)
+            order[r] = newrow
+    return order
+
+
 def place(spec):
     """spec -> layout dict {canvas, nodes, groups, edges, warnings}."""
     warns = []
@@ -126,7 +184,13 @@ def place(spec):
         cand = [x for x in rows if x < r]
         return cand[-1] if cand else rows[0]
 
+    def next_row_top(g):
+        idx = rows.index(g)
+        return row_top[rows[idx + 1]] if idx + 1 < len(rows) else None
+
     order = _order(rows, layer, edges, groups)
+    up_entries = {e["to"] for e in edges if layer[e["to"]] - layer[e["from"]] >= 1}
+    order = _make_contiguous(order, rows, groups, up_entries)
 
     # ---- x placement ----
     bw = {n["id"]: _box_w(n["name"]) for n in nodes}
@@ -150,8 +214,6 @@ def place(spec):
         cx[i] += MARGIN_X
 
     # ---- which horizontal lines share each physical gap (key = row above) ----
-    # roles: adj (one-elbow between adjacent rows), u (same-row U-elbow below),
-    #        in (multi-row source band, no label), out (multi-row target band)
     buckets = {}
     blocked_same_row = set()
 
@@ -213,17 +275,41 @@ def place(spec):
                        "w": (max(cx[m] + bw[m] / 2 for m in ms) + PAD_X)
                             - (min(cx[m] - bw[m] / 2 for m in ms) - PAD_X),
                        "h": gbot - (gtop - PAD_TOP)})
+    labels = _label_rects(gboxes)
 
+    # ---- foreign nodes caught in a group box: repack to the roomier side ----
     members = {m for gb in gboxes for m in gb["members"]}
     for n in nodes:
         i = n["id"]
         if i in members:
             continue
         for gb in gboxes:
-            if (gb["x"] - 4 < cx[i] < gb["x"] + gb["w"] + 4
+            if not (gb["x"] - 4 < cx[i] < gb["x"] + gb["w"] + 4
                     and gb["y"] < top[i] + BOX_H / 2 < gb["y"] + gb["h"]):
-                cx[i] = gb["x"] + gb["w"] + max(60, bw[i] / 2 + 30)
+                continue
+            need = max(60, bw[i] / 2 + 30)
+            # left side: squeeze into the gap between the box edge and the
+            # nearest node to the left on this row
+            left_prev = max((cx[j] + bw[j] / 2 for j in order[layer[i]]
+                             if cx[j] < cx[i] and j not in members), default=MARGIN_X * 0.2)
+            left_room = gb["x"] - 8 - left_prev
+            # right side: nearest node to the right
+            right_next = min((cx[j] - bw[j] / 2 for j in order[layer[i]]
+                              if cx[j] > cx[i]), default=None)
+            right_room = None if right_next is None else right_next - (gb["x"] + gb["w"]) - 8
+            placed = False
+            if left_room >= bw[i] + 24:
+                cx[i] = left_prev + 12 + bw[i] / 2
+                placed = True
+            elif right_room is None or right_room >= bw[i] + 24:
+                cx[i] = gb["x"] + gb["w"] + need
                 W = max(W, int(cx[i] + bw[i] / 2 + MARGIN_X))
+                placed = True
+            else:
+                cx[i] = gb["x"] + gb["w"] + need
+                W = max(W, int(cx[i] + bw[i] / 2 + MARGIN_X))
+                placed = True
+            if placed:
                 warns.append(f"节点 {n['name']} 移出分组框")
 
     # ---- corridors ----
@@ -241,7 +327,7 @@ def place(spec):
                     new = []
                     for ca, cb in cur:
                         if x1 <= ca or x0 >= cb:
-                            new.append((ca, cb))      # box misses this piece: keep it
+                            new.append((ca, cb))
                         else:
                             if x0 > ca:
                                 new.append((ca, x0))
@@ -258,6 +344,23 @@ def place(spec):
             if best is None or abs(c - want) < abs(best - want):
                 best = c
         return best
+
+    def dodge_group_label(x0, x1, ly, ceiling, drop_x=None):
+        """Push a horizontal segment below any group-label corner it crosses —
+        either because the segment itself runs through the label zone, or
+        because its final vertical drop (at drop_x) would fall through the
+        label on the way to the target tile. ceiling: y the segment must stay
+        above (target tile top - 12)."""
+        for rect in labels:
+            h_hit = rect["x0"] - 2 <= x1 and rect["x1"] + 2 >= x0 \
+                and rect["y0"] - 2 <= ly <= rect["y1"] + 2
+            v_hit = (drop_x is not None and rect["x0"] - 2 <= drop_x <= rect["x1"] + 2
+                     and ly < rect["y0"] and rect["y1"] < ceiling)
+            if h_hit or v_hit:
+                cand = rect["y1"] + 8
+                if cand < ceiling:
+                    return cand
+        return ly
 
     # ---- routing ----
     W_box = [W]
@@ -278,8 +381,17 @@ def place(spec):
         if diff == 0:
             if id(e) in blocked_same_row:
                 ly = line_map[(id(e), "u")]
+                ntop = next_row_top(layer[s])
+                if ntop is not None:
+                    ly = min(ly, ntop - 46)
+                x0, x1 = sorted((cx[s], cx[t]))
+                ly = dodge_group_label(x0, x1, ly, (ntop - 12) if ntop is not None else ly + 1)
                 d = f"M{cx[s]:.0f} {top[s] + BOX_H + 6} V{ly} H{cx[t]:.0f} V{top[t] + BOX_H + 12}"
-                lab = ((cx[s] + cx[t]) / 2, ly + 16, "middle")
+                below_label = ly + 16
+                if ntop is not None and below_label + 10 > ntop - 4:
+                    lab = ((cx[s] + cx[t]) / 2, ly - 8, "middle")
+                else:
+                    lab = ((cx[s] + cx[t]) / 2, ly + 16, "middle")
                 max_line_y = max(max_line_y, ly + 26)
             else:
                 yy = top[s] + 30
@@ -291,20 +403,31 @@ def place(spec):
         elif diff == 1:
             ly = line_map[(id(e), "adj")]
             sx = sx_for(e, s, "down")
+            ntop = next_row_top(layer[s])
+            x0, x1 = sorted((sx, cx[t]))
+            if ntop is not None:
+                ly = dodge_group_label(x0, x1, ly, ntop - 12, drop_x=cx[t])
             d = f"M{sx:.0f} {top[s] + BOX_H + 6} V{ly} H{cx[t]:.0f} V{top[t] - 6}"
-            if abs(cx[t] - sx) < 8:                      # straight vertical: label beside
+            if abs(cx[t] - sx) < 8:
                 lab = (sx + 10, (top[s] + BOX_H + top[t]) / 2 + 4, "start")
             else:
-                lab = ((min(sx, cx[t]) + abs(cx[t] - sx) / 2), ly + 16, "middle")
+                below_label = ly + 16
+                if ntop is not None and below_label + 10 > ntop - 4:
+                    lab = ((x0 + x1) / 2, ly - 8, "middle")
+                else:
+                    lab = ((x0 + x1) / 2, ly + 16, "middle")
                 max_line_y = max(max_line_y, ly + 26)
         elif diff == -1:
             ly = line_map[(id(e), "adj")]
             sx = sx_for(e, s, "up")
+            x0, x1 = sorted((sx, cx[t]))
+            # the gap above layer[t]'s row: its ceiling is row_top of s minus 12
+            ly = dodge_group_label(x0, x1, ly, top[s] - 12)
             d = f"M{sx:.0f} {top[s] - 6} V{ly} H{cx[t]:.0f} V{top[t] + BOX_H + 12}"
             if abs(cx[t] - sx) < 8:
                 lab = (sx + 10, (top[s] + top[t] + BOX_H) / 2 + 4, "start")
             else:
-                lab = ((min(sx, cx[t]) + abs(cx[t] - sx) / 2), ly + 16, "middle")
+                lab = ((x0 + x1) / 2, ly + 16, "middle")
                 max_line_y = max(max_line_y, ly + 26)
         else:
             down = diff > 1
@@ -319,30 +442,36 @@ def place(spec):
                 warns.append("长边走画布右侧绕行")
             sx = sx_for(e, s, "down" if down else "up")
             if down:
+                x0, x1 = sorted((cor, cx[t]))
+                ly_out = dodge_group_label(x0, x1, ly_out, top[t] - 12, drop_x=cx[t])
                 d = (f"M{sx:.0f} {top[s] + BOX_H + 6} V{ly_in} H{cor:.0f} V{ly_out} "
                      f"H{cx[t]:.0f} V{top[t] - 6}")
             else:
+                x0, x1 = sorted((cor, cx[t]))
+                ly_out = dodge_group_label(x0, x1, ly_out, top[t] + BOX_H + 12 + 1)
                 d = (f"M{sx:.0f} {top[s] - 6} V{ly_in} H{cor:.0f} V{ly_out} "
                      f"H{cx[t]:.0f} V{top[t] + BOX_H + 12}")
-            lab = ((cx[t] + cor) / 2, ly_out + 16, "middle")
+            lab = ((x0 + x1) / 2, ly_out + 16, "middle")
             max_line_y = max(max_line_y, ly_out + 26)
         routed.append({"d": d, "kind": e["kind"], "label": e["label"], "label_pos": lab})
 
-    # label collision nudge: (a) label vs label, (b) label vs other edges' lines
+    # ---- label placement: grid search for a spot hitting no line and no label rect ----
     def _segs(d):
         toks = re.findall(r"[MHVL]|-?\d+(?:\.\d+)?", d)
         x = y = 0.0
         pts = []
         i = 0
         while i < len(toks):
-            t = toks[i]
-            if t == "M":
-                x, y = float(toks[i + 1]), float(toks[i + 2]); i += 3; pts = [(x, y)]
-            elif t == "V":
+            tok = toks[i]
+            if tok == "M":
+                x, y = float(toks[i + 1]), float(toks[i + 2])
+                i += 3
+                pts = [(x, y)]
+            elif tok == "V":
                 y = float(toks[i + 1]); i += 2; pts.append((x, y))
-            elif t == "H":
+            elif tok == "H":
                 x = float(toks[i + 1]); i += 2; pts.append((x, y))
-            elif t == "L":
+            elif tok == "L":
                 x, y = float(toks[i + 1]), float(toks[i + 2]); i += 3; pts.append((x, y))
             else:
                 i += 1
@@ -350,14 +479,18 @@ def place(spec):
 
     all_segs = [(i, _segs(e["d"])) for i, e in enumerate(routed)]
 
-    def label_hits(idx, x, y, txt):
+    def spot_hits(idx, x, y, txt):
         w = _txt_w(txt) / 2 + 4
-        l, r, t, b = x - w, x + w, y - 10, y + 3
-        for j, segs in all_segs:                         # own line included: never sit on it
+        l, rr, t, b = x - w, x + w, y - 10, y + 3
+        for j, segs in all_segs:
             for (x1, y1), (x2, y2) in segs:
-                if min(x1, x2) - 1.5 <= r and max(x1, x2) + 1.5 >= l \
+                if min(x1, x2) - 1.5 <= rr and max(x1, x2) + 1.5 >= l \
                         and min(y1, y2) - 1.5 <= b and max(y1, y2) + 1.5 >= t:
                     return True
+        for rect in labels:
+            if rect["x0"] - 2 <= rr and rect["x1"] + 2 >= l \
+                    and rect["y0"] - 2 <= b and rect["y1"] + 2 >= t:
+                return True
         return False
 
     placed = []
@@ -365,14 +498,20 @@ def place(spec):
         if not e["label"]:
             continue
         x, y, anchor = e["label_pos"]
-        for (px, py) in placed:
-            if abs(py - y) < 13 and abs(px - x) < (_txt_w(e["label"]) / 2 + 34):
-                y += LINE_STEP
-                break
-        if label_hits(idx, x, y, e["label"]):
-            for dx, dy in ((0, -14), (0, 15), (18, -14), (-18, -14), (0, LINE_STEP * 2)):
-                if not label_hits(idx, x + dx, y + dy, e["label"]) and y + dy > 0:
-                    x, y = x + dx, y + dy
+        if anchor != "start":
+            for (px, py) in placed:
+                if abs(py - y) < 13 and abs(px - x) < (_txt_w(e["label"]) / 2 + 34):
+                    y += LINE_STEP
+                    break
+        if spot_hits(idx, x, y, e["label"]):
+            found = False
+            for dy in (16, -14, 30, -28, 46, -42, 60, 76):
+                for dx in (0, 18, -18, 36, -36, 54, -54, 72, -72):
+                    if y + dy > 0 and not spot_hits(idx, x + dx, y + dy, e["label"]):
+                        x, y = x + dx, y + dy
+                        found = True
+                        break
+                if found:
                     break
         placed.append((x, y))
         e["label_pos"] = (x, y, anchor)
