@@ -27,9 +27,10 @@
   /* group palette B — accent-family (repo/tooling groups) */
   --color-accent-soft: oklch(58% 0.20 256 / .45);
   --color-accent-tint: oklch(97% 0.012 256 / .5);
-  /* JP glyphs: name JP faces explicitly — bare sans-serif fallback on Linux picks Chinese-variant CJK */
-  --font-display: "Geist", "Hiragino Sans", "Yu Gothic UI", "Noto Sans CJK JP", "Noto Sans JP", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "Hiragino Sans", "Yu Gothic UI", "Noto Sans CJK JP", "Noto Sans JP", ui-sans-serif, system-ui, sans-serif;
+  /* CJK glyphs: SC faces first for zh labels (ark fork), JP faces after for ja labels —
+     bare sans-serif fallback on Linux would otherwise pick one variant for both */
+  --font-display: "Geist", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", "Hiragino Sans", "Yu Gothic UI", "Noto Sans CJK JP", "Noto Sans JP", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", "Hiragino Sans", "Yu Gothic UI", "Noto Sans CJK JP", "Noto Sans JP", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --space-xs: 4px; --space-sm: 8px; --space-md: 16px; --space-lg: 24px; --space-xl: 40px; --space-2xl: 64px;
   --radius-card: 10px; --radius-tile: 12px;

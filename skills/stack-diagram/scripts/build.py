@@ -18,14 +18,9 @@ MIME = {"svg": "image/svg+xml", "png": "image/png", "webp": "image/webp",
 
 def b64(p): return base64.b64encode(pathlib.Path(p).read_bytes()).decode()
 
-def main():
-    args = sys.argv[1:]
-    fontsdir = None
-    if "--fonts" in args:
-        i = args.index("--fonts"); fontsdir = pathlib.Path(args[i + 1]); del args[i:i + 2]
-    if len(args) != 3:
-        print(__doc__); sys.exit(1)
-    draft, icondir, out = pathlib.Path(args[0]), pathlib.Path(args[1]), pathlib.Path(args[2])
+def run(draft, icondir, out, fontsdir=None):
+    """Inline fonts/icons; callable as a module (ark fork — main() wraps this)."""
+    draft, icondir, out = pathlib.Path(draft), pathlib.Path(icondir), pathlib.Path(out)
     html = draft.read_text(encoding="utf-8")
 
     if fontsdir:
@@ -46,6 +41,17 @@ def main():
                  f"(missing icon files in {icondir}? forgot --fonts?)")
     out.write_text(html, encoding="utf-8")
     print(f"built {out} ({len(html) // 1024} KB)")
+
+
+def main():
+    args = sys.argv[1:]
+    fontsdir = None
+    if "--fonts" in args:
+        i = args.index("--fonts"); fontsdir = pathlib.Path(args[i + 1]); del args[i:i + 2]
+    if len(args) != 3:
+        print(__doc__); sys.exit(1)
+    run(args[0], args[1], args[2], fontsdir)
+
 
 if __name__ == "__main__":
     main()

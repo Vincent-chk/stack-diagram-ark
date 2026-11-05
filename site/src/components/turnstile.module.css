@@ -1,6 +1,0 @@
-/* The normal widget is 300 × 65; reserve it so the panel doesn't jump when the iframe arrives */
-.widget {
-  flex: none;
-  width: 300px;
-  min-height: 65px;
-}

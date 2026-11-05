@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一句话架构图 · Ark Seed 2.1</title>
+<style>
+:root {
+  --paper: oklch(98.5% 0.004 250); --rule: oklch(93% 0.007 255);
+  --rule2: oklch(83% 0.011 255); --muted: oklch(56% 0.013 255);
+  --ink: oklch(24% 0.020 258); --accent: oklch(58% 0.20 256);
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink);
+  font-family: "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+  padding: 40px 24px 64px; }
+.page { max-width: 880px; margin: 0 auto; }
+.kicker { font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
+  color: var(--accent); margin-bottom: 8px; }
+h1 { font-size: 26px; letter-spacing: -0.005em; margin-bottom: 6px; }
+.lede { font-size: 13px; color: var(--muted); margin-bottom: 24px; line-height: 1.7; }
+textarea { width: 100%; min-height: 96px; padding: 14px; font: inherit; font-size: 14px;
+  border: 1px solid var(--rule2); border-radius: 10px; background: #fff; resize: vertical; }
+textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
+.chip { font-size: 12px; padding: 6px 12px; border: 1px solid var(--rule2);
+  border-radius: 999px; background: #fff; cursor: pointer; color: var(--muted); }
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+.row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
+.quality { display: flex; gap: 0; border: 1px solid var(--rule2); border-radius: 10px;
+  overflow: hidden; }
+.quality label { padding: 8px 14px; font-size: 13px; cursor: pointer; color: var(--muted);
+  background: #fff; }
+.quality input { display: none; }
+.quality input:checked + span { color: var(--accent); font-weight: 600; }
+.quality label:has(input:checked) { background: oklch(97% 0.012 256 / .5); }
+button.go { font: inherit; font-size: 15px; font-weight: 600; padding: 10px 28px;
+  border: none; border-radius: 10px; background: var(--accent); color: #fff; cursor: pointer; }
+button.go:disabled { opacity: .45; cursor: wait; }
+.status { font-family: var(--mono); font-size: 12px; color: var(--muted); min-height: 18px; }
+.err { color: #c0392b; font-size: 13px; white-space: pre-wrap; }
+.result { margin-top: 24px; border-top: 1px solid var(--rule2); padding-top: 20px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.tabs button { font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 8px;
+  border: 1px solid var(--rule2); background: #fff; cursor: pointer; color: var(--muted); }
+.tabs button.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+img.diagram { max-width: 100%; border: 1px solid var(--rule); border-radius: 10px; background: #fff; }
+.meta { font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin: 12px 0;
+  display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.badge { padding: 2px 8px; border-radius: 6px; border: 1px solid var(--rule2); }
+.badge.ok { color: #1e8e4e; border-color: #1e8e4e55; }
+.badge.bad { color: #c0392b; border-color: #c0392b55; }
+.dl { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0 18px; }
+.dl a { font-size: 13px; color: var(--accent); text-decoration: none;
+  border: 1px solid var(--rule2); padding: 6px 14px; border-radius: 8px; }
+.dl a:hover { border-color: var(--accent); }
+details { margin-top: 10px; font-size: 12px; color: var(--muted); }
+details pre { overflow: auto; background: #fff; border: 1px solid var(--rule);
+  border-radius: 8px; padding: 10px; margin-top: 8px; font-size: 11px; }
+.foot { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--rule2);
+  font-family: var(--mono); font-size: 10.5px; color: var(--muted); line-height: 1.8; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="kicker">stack-diagram / ark / Seed 2.1</div>
+  <h1>一句话，一张带品牌 logo 的架构图</h1>
+  <p class="lede">用一句大白话描述你的服务用了什么（不需要会画图、不需要懂架构），
+    方舟 Seed 2.1 负责听懂并抽出节点与连线，代码负责按工程制图规则排版出图。
+    支持火山生态官方图标（方舟 / 豆包 / 扣子 / TRAE / 飞书 / 微信 / 抖音 / 小红书）。</p>
+
+  <textarea id="sentence" placeholder="例：我做了个公众号，Next.js 部署在 Vercel，AI 用火山方舟的 Seed 2.1 每天早上生成行业简报，自动推送到飞书群。"></textarea>
+  <div class="chips" id="chips"></div>
+
+  <div class="row">
+    <div class="quality">
+      <label><input type="radio" name="q" value="lite" checked><span>标准档 lite · 快 · 约 ¥0.005/次</span></label>
+      <label><input type="radio" name="q" value="pro"><span>精细档 pro · 约 ¥0.05/次</span></label>
+    </div>
+    <button class="go" id="go">生成架构图</button>
+    <div class="status" id="status"></div>
+  </div>
+  <div class="err" id="err"></div>
+
+  <div class="result" id="result" style="display:none">
+    <div class="tabs">
+      <button class="on" id="tab-light">浅色</button>
+      <button id="tab-dark">深色</button>
+    </div>
+    <img class="diagram" id="diagram" alt="架构图">
+    <div class="meta" id="meta"></div>
+    <div class="dl">
+      <a id="dl-png" download="stack-diagram.png">下载 PNG（浅色）</a>
+      <a id="dl-png-dark" download="stack-diagram-dark.png">下载 PNG（深色）</a>
+      <a id="dl-html" download="stack-diagram.html">下载 HTML（自包含）</a>
+    </div>
+    <details><summary>查看机器抽取的结构（nodes / groups / edges）</summary>
+      <pre id="spec"></pre></details>
+  </div>
+
+  <div class="foot">
+    本地运行 · API Key 不出本机 · 图标为各品牌官方图形，仅作指示性使用，不代表官方背书<br>
+    基于 caru-ini/stack-diagram（MIT）改造：推理换火山方舟 Seed 2.1 · 新增火山/中文图标包 · 确定性排版引擎
+  </div>
+</div>
+<script>
+const EXAMPLES = [
+  ["公众号简报", "我做了个公众号：Next.js 部署在 Vercel，AI 用火山方舟的 Seed 2.1 每天早上生成行业简报，自动推送到飞书群。"],
+  ["小店客服", "我开了个网店，用扣子搭了个客服机器人回答售后问题，机器人调用豆包大模型，聊天记录同步到飞书多维表格。"],
+  ["私活交付", "给客户做了个官网：前端 Next.js 放在火山引擎，后端 FastAPI，数据库用 PostgreSQL，图片存对象存储 TOS。"],
+  ["课程制作", "我做付费课程：文案用豆包生成，配音用火山引擎语音合成，视频剪好后发到抖音和小红书，学员群在飞书。"],
+  ["简历项目图", "My side project: Next.js on Vercel, API in Hono, Postgres on Neon, auth with Clerk, payments with Stripe."],
+];
+const chips = document.getElementById('chips');
+EXAMPLES.forEach(([name, text]) => {
+  const b = document.createElement('button');
+  b.className = 'chip'; b.textContent = name;
+  b.onclick = () => { document.getElementById('sentence').value = text; };
+  chips.appendChild(b);
+});
+
+const STAGES = ['连接方舟，抽取节点与连线…', '装配官方图标…', '按工程制图规则排版…', '渲染浅色/深色 PNG…', '自查：箭头是否压字…'];
+let timer = null;
+function tick() {
+  let i = 0;
+  document.getElementById('status').textContent = STAGES[0];
+  timer = setInterval(() => { i = Math.min(i + 1, STAGES.length - 1);
+    document.getElementById('status').textContent = STAGES[i]; }, 2600);
+}
+document.getElementById('go').onclick = async () => {
+  const sentence = document.getElementById('sentence').value.trim();
+  const err = document.getElementById('err'); err.textContent = '';
+  if (sentence.length < 2) { err.textContent = '先写一句话描述你的技术栈，或点上面的示例。'; return; }
+  const quality = document.querySelector('input[name=q]:checked').value;
+  const go = document.getElementById('go');
+  go.disabled = true; tick();
+  try {
+    const r = await fetch('/api/generate', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sentence, quality }) });
+    const j = await r.json();
+    if (!r.ok) { throw new Error(j.detail || '生成失败'); }
+    show(j);
+  } catch (e) {
+    err.textContent = e.message || String(e);
+  } finally {
+    clearInterval(timer); go.disabled = false;
+    document.getElementById('status').textContent = '';
+  }
+};
+let cur = 'light';
+function show(j) {
+  document.getElementById('result').style.display = '';
+  const img = document.getElementById('diagram');
+  const pngs = { light: j.png, dark: j.png_dark || j.png };
+  img.src = 'data:image/png;base64,' + pngs[cur];
+  document.getElementById('tab-light').onclick = () => { cur = 'light';
+    setTab(); img.src = 'data:image/png;base64,' + pngs.light; };
+  document.getElementById('tab-dark').onclick = () => { cur = 'dark';
+    setTab(); img.src = 'data:image/png;base64,' + pngs.dark; };
+  function setTab() {
+    document.getElementById('tab-light').classList.toggle('on', cur === 'light');
+    document.getElementById('tab-dark').classList.toggle('on', cur === 'dark');
+  }
+  if (j.png) dl('dl-png', j.png, 'image/png');
+  if (j.png_dark) dl('dl-png-dark', j.png_dark, 'image/png');
+  if (j.html) dl('dl-html', btoa(unescape(encodeURIComponent(j.html))), 'text/html');
+  const m = j.meta || {};
+  const badge = j.check && j.check.passed
+    ? '<span class="badge ok">自查通过 · 无压线</span>'
+    : '<span class="badge bad">自查有告警</span>';
+  const cost = (m.est_cost_yuan != null) ? `¥${m.est_cost_yuan}` : '—';
+  document.getElementById('meta').innerHTML =
+    `${badge}<span>总耗时 ${m.total || '—'}s（方舟 ${m.latency_api || '—'}s）</span>` +
+    `<span>费用 ${cost}</span><span>${m.model || ''}</span>` +
+    `<span>${Object.entries(m.stages || {}).map(([k, v]) => k + ' ' + v + 's').join(' · ')}</span>`;
+  const notes = [...(j.warnings || []), ...(j.notes || [])];
+  if (notes.length) {
+    document.getElementById('meta').innerHTML +=
+      `<span class="badge">备注: ${notes.slice(0, 3).join('；')}</span>`;
+  }
+  document.getElementById('spec').textContent = JSON.stringify(j.spec, null, 2);
+}
+function dl(id, b64, mime) {
+  const a = document.getElementById(id);
+  a.href = `data:${mime};base64,${b64}`;
+}
+</script>
+</body>
+</html>

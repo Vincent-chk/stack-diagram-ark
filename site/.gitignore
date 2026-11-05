@@ -1,7 +1,0 @@
-node_modules/
-dist/
-.wrangler/
-.tanstack/
-.css-types/
-.dev.vars*
-.env.keys

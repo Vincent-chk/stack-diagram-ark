@@ -24,20 +24,9 @@ import glob, os, pathlib, sys
 SQUARE_CORNERS = (".scroller{border-radius:0!important;border:none!important}"
                   ".canvas{border-radius:0!important}")
 
-def main():
-    args = sys.argv[1:]
-    sel, scale, full, single = ".canvas", 2, False, False
-    if "--selector" in args:
-        i = args.index("--selector"); sel = args[i + 1]; del args[i:i + 2]
-    if "--scale" in args:
-        i = args.index("--scale"); scale = float(args[i + 1]); del args[i:i + 2]
-    if "--full-page" in args:
-        args.remove("--full-page"); full = True
-    if "--single" in args:
-        args.remove("--single"); single = True
-    if len(args) != 2:
-        print(__doc__); sys.exit(1)
-    src, out = pathlib.Path(args[0]).resolve(), pathlib.Path(args[1])
+def render(src, out, sel=".canvas", scale=2, full=False, single=False):
+    """Render both themes; callable as a module (ark fork — main() wraps this)."""
+    src, out = pathlib.Path(src).resolve(), pathlib.Path(out)
 
     lib_dirs = glob.glob("/tmp/libs/usr/lib/*")
     if lib_dirs:
@@ -93,6 +82,23 @@ def main():
             page.wait_for_timeout(120)
             shoot(page, out.with_name(out.stem + "-dark" + out.suffix))
         b.close()
+
+
+def main():
+    args = sys.argv[1:]
+    sel, scale, full, single = ".canvas", 2, False, False
+    if "--selector" in args:
+        i = args.index("--selector"); sel = args[i + 1]; del args[i:i + 2]
+    if "--scale" in args:
+        i = args.index("--scale"); scale = float(args[i + 1]); del args[i:i + 2]
+    if "--full-page" in args:
+        args.remove("--full-page"); full = True
+    if "--single" in args:
+        args.remove("--single"); single = True
+    if len(args) != 2:
+        print(__doc__); sys.exit(1)
+    render(args[0], args[1], sel, scale, full, single)
+
 
 if __name__ == "__main__":
     main()

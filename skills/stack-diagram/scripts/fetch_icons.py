@@ -11,6 +11,9 @@ Spec forms:
   name:aws/Service  -> official AWS icon     (e.g. lambda:aws/AWS-Lambda)
   name:gcp/Product  -> official Google Cloud icon (e.g. run:gcp/Cloud-Run)
   name:azure/Service -> official Azure icon  (e.g. vault:azure/Key-Vaults)
+  name:volc/Brand   -> bundled volc pack     (e.g. ark:volc/ark, 公众号:volc/wechat)
+                                     Chinese aliases also hit the pack directly:
+                                     豆包 方舟 扣子 飞书 微信 公众号 抖音 小红书 ...
 
 Sources tried in order:
   1. svgl              api.svgl.app?search={s} -> route (light variant when split)
@@ -36,7 +39,7 @@ Writes OUTDIR/<name>.<ext> and OUTDIR/manifest.json, plus OUTDIR/<name>_dark.<ex
 the source has a dark-theme variant (for group labels). Flags white/near-white fills
 (use a dark tile for those). Never modifies icon colors.
 """
-import base64, functools, http.client, io, json, pathlib, re, sys, urllib.request, urllib.error, urllib.parse, zipfile
+import base64, functools, http.client, io, ipaddress, json, pathlib, re, sys, urllib.request, urllib.error, urllib.parse, zipfile
 
 UA = {"User-Agent": "Mozilla/5.0 (stack-diagram-skill)"}
 NAME_RE = re.compile(r"[A-Za-z0-9_-]+")   # becomes a filename and an %%ICON_<name>%% token
@@ -146,13 +149,92 @@ AZURE_ALIASES = {
 }
 PACKAGES = {}
 
-def get(url, timeout=15):
-    req = urllib.request.Request(url, headers=UA)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+# ---- volc pack (ark fork) -------------------------------------------------
+# Official marks for the Volcengine ecosystem and common Chinese stacks, bundled
+# under assets/volc/ (see assets/volc/CREDITS.md). svgl/devicon/gilbarbara carry
+# none of these brands (verified 2026-11-05), so they resolve locally instead.
+VOLC_DIR = pathlib.Path(__file__).resolve().parent.parent / "assets" / "volc"
+VOLC_EXTS = {".svg", ".png", ".webp", ".jpg", ".jpeg"}
+VOLC_ALIASES = {
+    "volc": "volcengine", "volcengine": "volcengine", "火山": "volcengine", "火山引擎": "volcengine",
+    "ark": "volcengine", "方舟": "volcengine", "火山方舟": "volcengine",
+    "hiagent": "volcengine", "agentkit": "volcengine",
+    "doubao": "doubao", "豆包": "doubao", "seed": "doubao",
+    "coze": "coze", "扣子": "coze",
+    "trae": "trae", "traecn": "trae",
+    "feishu": "feishu", "lark": "feishu", "飞书": "feishu",
+    "wechat": "wechat", "weixin": "wechat", "微信": "wechat", "公众号": "wechat",
+    "微信公众平台": "wechat", "微信小程序": "wechat",
+    "douyin": "douyin", "抖音": "douyin",
+    "xiaohongshu": "xiaohongshu", "rednote": "xiaohongshu", "小红书": "xiaohongshu",
+    "cron": "cron",
+}
+
+
+def volc_key(query):
+    """CJK-aware key: keep unicode letters/digits, drop separators, lowercase."""
+    return re.sub(r"[\s\-_.:]+", "", (query or "").strip().lower())
+
+
+def volc_sources(query):
+    key = VOLC_ALIASES.get(volc_key(query))
+    if not key:
+        return []
+    hits = sorted((f for f in VOLC_DIR.iterdir()
+                   if f.is_file() and f.stem == key and f.suffix.lower() in VOLC_EXTS), key=str)
+    if hits:
+        return [("volc", f"local://{hits[0].resolve()}", None)]
+    if VOLC_DIR.is_dir():
+        names = sorted({f.stem for f in VOLC_DIR.iterdir()
+                        if f.is_file() and f.suffix.lower() in VOLC_EXTS})
+        print(f"VOLC {query!r} is not in the local pack. Pack names: {', '.join(names)}")
+    return []
+
+def _guard_remote(url):
+    """SSRF guard for the brand-URL feature: http(s) only, no userinfo, host must be
+    a public domain or global IP. Raises OSError otherwise."""
+    p = urllib.parse.urlsplit(url)
+    if p.scheme not in ("http", "https") or not p.hostname or "@" in (p.netloc or ""):
+        raise OSError(f"blocked URL: {url!r}")
+    host = p.hostname.strip().rstrip(".").lower()
+    if host in ("localhost",) or host.endswith((".local", ".internal", ".lan")):
+        raise OSError(f"blocked host: {host}")
+    try:
+        ip = ipaddress.ip_address(host)
+        if not ip.is_global:
+            raise OSError(f"blocked non-global address: {host}")
+    except ValueError:
+        pass
+    return p
+
+
+def get(url, timeout=15, _redirects=3):
+    p = _guard_remote(url)
+    target = (p.path or "/") + (f"?{p.query}" if p.query else "")
+    if p.scheme == "https":
+        conn = http.client.HTTPSConnection(p.hostname, p.port or 443, timeout=timeout)
+    else:
+        conn = http.client.HTTPConnection(p.hostname, p.port or 80, timeout=timeout)
+    try:
+        conn.request("GET", target, headers=UA)
+        r = conn.getresponse()
+        if r.status in (301, 302, 303, 307, 308) and r.getheader("Location") and _redirects > 0:
+            loc = urllib.parse.urljoin(url, r.getheader("Location"))
+            r.read()
+            conn.close()
+            return get(loc, timeout, _redirects - 1)
+        b = r.read()
+        if r.status != 200:
+            raise OSError(f"HTTP {r.status} for {url}")
+        return b
+    finally:
+        conn.close()
 
 def read(url):
-    """Bytes of url; '<package URL>#<member>' reads from the already-downloaded zip."""
+    """Bytes of url; '<package URL>#<member>' reads from the already-downloaded zip;
+    'local://<path>' reads from the bundled volc pack."""
+    if url.startswith("local://"):
+        return pathlib.Path(url[8:]).read_bytes()
     zip_url, _, member = url.partition("#")
     return PACKAGES[zip_url].read(member) if zip_url in PACKAGES else get(url)
 
@@ -305,6 +387,11 @@ def sources(slug):
     # concept icons: slug "lucide/<icon-name>" -> Lucide line icon (browse: lucide.dev/icons)
     if slug.startswith("lucide/"):
         return [("lucide", f"https://cdn.jsdelivr.net/npm/lucide-static/icons/{slug[7:]}.svg", None)]
+    # volc pack: explicit "volc/<brand>" or any known volcano/Chinese alias (ark fork)
+    if slug.startswith("volc/"):
+        return volc_sources(slug[5:])
+    if volc_key(slug) in VOLC_ALIASES:
+        return volc_sources(slug)
     if slug.startswith("aws/"):
         return aws_sources(slug[4:])
     if norm(slug) in ("aws", "amazonwebservices"):
