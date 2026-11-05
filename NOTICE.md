@@ -1,6 +1,6 @@
 # NOTICE — ark fork 分叉说明
 
-本仓库是 [caru-ini/stack-diagram](https://github.com/caru-ini/stack-diagram) 的私有改造分支（fork 基线钉在
+本仓库是 [caru-ini/stack-diagram](https://github.com/caru-ini/stack-diagram) 的开源改造分支（fork 基线钉在
 **v0.4.0 / commit `1ed53e3e9525364ae5d82e0430f2bb3f7ef4c838`，2026-11-03**）。上游代码与文档为 MIT
 （见 LICENSE），字体 SIL OFL 1.1。本分支的改动同样以 MIT 提供。
 
